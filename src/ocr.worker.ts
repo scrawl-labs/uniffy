@@ -11,7 +11,8 @@
 import * as ort from 'onnxruntime-web';
 import { PaddleOcrService } from 'ppu-paddle-ocr/web';
 import { findQuantities } from './units';
-import { looksLikeWeight, type OcrWord } from './layout';
+import { type OcrWord } from './layout';
+import { interpret } from './reading';
 
 export type WorkerRequest = { type: 'init'; base: string; debug?: boolean } | { type: 'read'; id: number; image: ImageBitmap };
 export type WorkerResponse =
@@ -109,28 +110,6 @@ interface Reading {
   confidence: number;
   angle: number;
   score: number;
-}
-
-/** Keep only characters that can appear in a weight/unit reading (the model's dictionary is CJK-heavy). */
-function clean(text: string): string {
-  return text.replace(/[^0-9A-Za-z.,°'"\/ -]/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-/**
- * Turn a raw reading into the text we keep and a score:
- * - number + unit ("45 LB") → full text, bonus
- * - a single number with some junk ("L40") → just the number, penalised by how much junk there was
- * - anything else → rejected
- */
-function interpret(raw: string, confidence: number): { text: string; score: number } {
-  const text = clean(raw);
-  if (findQuantities(text).length) return { text, score: confidence + 0.1 };
-  const nums = text.match(/\d+(?:\.\d+)?/g) ?? [];
-  if (nums.length !== 1) return { text, score: -1 };
-  const purity = nums[0].length / Math.max(1, text.replace(/\s/g, '').length);
-  // A bare number that is not a plausible gym weight ("408" = "40 LB" with LB read as 8) is suspect.
-  const plausible = looksLikeWeight(nums[0]) ? 1 : 0.8;
-  return { text: nums[0], score: confidence * (0.7 + 0.3 * purity) * plausible };
 }
 
 /** Latin words only, none of which is a unit ("ao LB" is a misread "40 LB", not prose). */
