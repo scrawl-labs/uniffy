@@ -1,60 +1,59 @@
-# uniffy
+<h1 align="center">uniffy</h1>
 
-카메라로 찍으면 **lb, °F, inch, cup, mph** 같은 단위가 그 자리에서 **kg, °C, cm, ml, km/h**로 바뀌어 보이는 웹앱(PWA)이에요.
-헬스장에서 "45 LB 원판이 몇 키로지?"를 매번 계산하기 귀찮아서 만들었어요.
+<p align="center">
+  <b>Point your camera at lb, °F or inches. See kg, °C and cm.</b><br />
+  Made for gyms with pound plates and dumbbells, and for everyone who thinks in metric.
+</p>
 
-- **서버가 없어요.** OCR(PaddleOCR)이 폰 안에서 돌아가서 사진이 밖으로 나가지 않아요.
-- **오프라인으로 써요.** 처음 한 번 OCR 모델(약 30MB)을 받고 나면 캐시돼서, 신호 안 잡히는 지하 헬스장에서도 돼요.
-- **설치는 선택이에요.** 링크로 열고 "홈 화면에 추가"를 누르면 앱처럼 써요.
+<p align="center">
+  <a href="https://scrawl-labs.github.io/uniffy/"><b>Open the app →</b></a>
+</p>
 
-## 쓰는 법
+<p align="center">
+  <img src="docs/dumbbells.jpg" width="260" alt="Dumbbell rack: tilted and upside-down 40 LB and 45 LB labels read as 18.1 kg and 20.4 kg" />
+  <img src="docs/plates.jpg" width="260" alt="Three plates converted, with plate total and barbell total" />
+  <img src="docs/recipe.jpg" width="260" alt="Recipe card: 350°F and 2 cups converted in place" />
+</p>
 
-1. 원판이나 라벨의 숫자를 화면 가운데 **네모 안에** 크게 맞추고 **찍기**를 눌러요.
-2. 사진 위 원래 숫자 자리에 kg / °C / cm가 덮여 보이고, 아래에 `45 lb = 20.4 kg`처럼 크게 나와요.
-3. 원판만 찍혔으면 **원판 합계**와 **바벨 양쪽에 꽂았을 때 총무게**(바 20kg 포함)도 바로 보여줘요.
-4. 잘못 잡힌 건 `×`로 빼요.
-5. 사진 없이 **직접 입력**도 돼요. 숫자만 치면 lb로 봐요(`225` → `102.1 kg`). `350f`, `5'11`도 돼요.
+## Features
 
-설정은 없어요. 항상 lb·°F·inch → kg·°C·cm로 바꿔요.
-화면 언어는 오른쪽 위 `EN | 한국어`로 바꿔요. 기본은 영어이고, 고른 언어는 기기에 기억돼요(`src/i18n.ts`).
-원판에 단위 없이 숫자만 있어도 lb 원판 규격(2.5 · 5 · 10 · 25 · 35 · 45 · 55 · 100)이면 알아서 lb로 읽어요.
+- **Snap and read.** Converted values are drawn right on top of the original numbers.
+- **Built for the gym.** Reads tilted and upside-down labels on dumbbells and plates. A bare `45` on a plate counts as pounds.
+- **Barbell math.** Adds up the plates and shows the total with a 20 kg bar loaded on both sides.
+- **Type it instead.** Enter `225` and get `102.1 kg`. `350f` and `5'11` work too.
+- **Private and offline.** OCR runs on your phone, so photos never leave it. After the first load, it works with no signal.
+- **English / 한국어.** Switch from the top-right corner.
 
-지원 단위: 무게(lb, oz), 길이(in, ft, 5'11", yd, mi), 온도(°F), 부피(cup, tbsp, tsp, fl oz, pt, qt, gal), 속도(mph). 범위(`10-12 lb`)와 분수(`1 1/2 cups`)도 읽어요.
+Converts weight (lb, oz), length (in, ft, `5'11"`, yd, mi), temperature (°F), volume (cup, tbsp, tsp, fl oz, pt, qt, gal) and speed (mph). Ranges (`10-12 lb`) and fractions (`1 1/2 cups`) work too.
 
-## 덤벨/원판을 어떻게 읽나
+## How it works
 
-헬스장 숫자는 둥근 덤벨 머리나 원판에 **기울어지거나 거꾸로** 찍혀 있어서, 문서용 OCR(Tesseract)로는 실제 사진에서 거의 못 읽었어요. 그래서 장면 속 글자에 강한 **PaddleOCR(PP-OCRv4)**을 ONNX Runtime WASM으로 폰 안에서 돌려요.
+1. [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) (PP-OCRv4) runs in a Web Worker through ONNX Runtime WASM and finds where the text is.
+2. Each text region is read at several rotations (30° steps, then ±15° around the best one), and the best reading wins. Number + unit beats a bare number. Implausible weights such as `408` (a misread `40 LB`) are rejected.
+3. Readings are grouped by position, parsed into quantities, converted and drawn on the photo.
 
-1. **위치 찾기**: 사진 전체에서 글자가 있는 영역을 찾아요(각도 상관없음).
-2. **돌려 읽기**: 영역마다 작은 조각을 0°부터 30° 간격으로 돌려 읽고, 제일 좋았던 각도 ±15°를 한 번 더 봐요. 확실한 결과(신뢰도 0.9 이상)가 나오면 바로 멈춰요.
-3. **고르기**: `45 LB`처럼 단위까지 읽힌 결과가 1순위예요. 숫자만 읽혔으면 잡글자가 적을수록, 무게로 말이 되는 숫자(2.5~150, 2.5 단위)일수록 점수가 높아요. `40 LB`의 LB가 `8`로 읽힌 `408` 같은 건 이 단계에서 걸러져요.
-4. **단위 추측**: 숫자랑 단위만 있는 줄에서 단위 없이 혼자 있는 무게 숫자(`40`)는 lb로 봐요. "Bake 10 min" 같은 문장 속 숫자는 건드리지 않아요.
+The first visit downloads about 30 MB of models. After that the service worker caches them.
 
-모델(15MB)과 런타임(15MB)은 처음 한 번 받고 나면 캐시돼서 오프라인에서도 돼요.
-
-## 개발
+## Development
 
 ```bash
-npm install      # OCR 모델/런타임을 public/ocr 로 복사함
-npm run dev      # https 가 아니면 폰 카메라가 안 켜짐 → 폰 테스트는 배포본이나 터널 사용
+npm install   # also copies OCR models + runtime into public/ocr
+npm run dev
 npm test
 npm run build
 ```
 
-`#debug`를 붙여 열면(`/uniffy/#debug`) OCR이 읽은 원본 단어를 콘솔에 찍어줘요.
+Phone cameras only work over HTTPS, so test on a phone with the deployed site or a tunnel. Add `#debug` to the URL to log raw OCR readings.
 
-## 배포
+Every push to `main` is tested, built and published to GitHub Pages by `.github/workflows/deploy.yml`.
 
-`main`에 푸시하면 GitHub Actions가 테스트 → 빌드 → `gh-pages` 브랜치에 올려요. GitHub Pages가 그 브랜치를 서빙해요.
-배포 주소: https://scrawl-labs.github.io/uniffy/
-
-## 구조
+## Project layout
 
 ```
-src/units.ts      단위 파싱 + 변환 (순수 함수, 테스트 있음)
-src/layout.ts     OCR 단어 → 줄/세로 묶기 → 변환 결과 + 위치, 중복 제거, 무게 추측
-src/ocr.worker.ts PaddleOCR 워커: 위치 찾기 → 조각 회전 읽기 → 고르기
-src/ocr.ts        워커 래퍼
-src/i18n.ts       화면 문구 (en / ko)
-src/main.ts       카메라, 오버레이, UI
+src/units.ts       unit parsing and conversion
+src/layout.ts      OCR words → positioned conversions; weight guessing; de-duplication
+src/ocr.worker.ts  PaddleOCR worker: detect → read each region at several rotations → pick
+src/ocr.ts         worker wrapper
+src/i18n.ts        UI strings (en, ko)
+src/main.ts        camera, overlay, UI
 ```

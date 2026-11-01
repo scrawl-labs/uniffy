@@ -34,6 +34,8 @@ body {
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto auto auto auto;
+  /* never let content (e.g. a long typed result) widen the page */
+  grid-template-columns: minmax(0, 1fr);
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
