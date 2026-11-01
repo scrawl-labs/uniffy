@@ -50,8 +50,8 @@ export function groupWords(words: OcrWord[]): Segment[] {
   }
 
   const segments: Segment[] = [];
-  for (const row of rows) {
-    row.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+  for (const unsorted of rows) {
+    const row = dropOverlappingDigits(unsorted.sort((a, b) => a.bbox.x0 - b.bbox.x0));
     let current: OcrWord[] = [];
     const flush = () => {
       if (!current.length) return;
@@ -78,6 +78,31 @@ export function groupWords(words: OcrWord[]): Segment[] {
     flush();
   }
   return mergeStacked(segments);
+}
+
+/**
+ * The detector sometimes cuts one label into two overlapping regions ("45" and
+ * "5 LB" for a printed "45 LB"), so the same digits are read twice. When a number
+ * overlaps its left neighbour and is just the end (or start) of it, keep the longer
+ * number only. The unit next to it ("LB") stays and joins the right number.
+ */
+function dropOverlappingDigits(row: OcrWord[]): OcrWord[] {
+  const out: OcrWord[] = [];
+  for (const w of row) {
+    const prev = out[out.length - 1];
+    const isNum = (t: string) => /^\d+(\.\d+)?$/.test(t);
+    if (prev && isNum(prev.text) && isNum(w.text)) {
+      const ix = Math.min(prev.bbox.x1, w.bbox.x1) - Math.max(prev.bbox.x0, w.bbox.x0);
+      const narrow = Math.min(prev.bbox.x1 - prev.bbox.x0, w.bbox.x1 - w.bbox.x0);
+      const dup = prev.text.endsWith(w.text) || w.text.startsWith(prev.text) || w.text.endsWith(prev.text);
+      if (ix > narrow * 0.4 && dup) {
+        if (w.text.length > prev.text.length) out[out.length - 1] = w;
+        continue;
+      }
+    }
+    out.push(w);
+  }
+  return out;
 }
 
 /** True when the text is nothing but a unit, e.g. "LB", "kg", "lbs." */

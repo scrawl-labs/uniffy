@@ -23,6 +23,21 @@ describe('groupWords', () => {
     expect(segs.map((s) => s.text)).toEqual(['45 LB']);
   });
 
+  it('reads one label split into overlapping "45" and "5 LB" regions as 45 LB', () => {
+    // real detector output for a plate printed "45 LB"
+    const segs = groupWords([
+      w('5', 541, 278, 614.25, 385),
+      w('LB', 687.5, 278, 834, 385),
+      w('45', 366, 275, 585, 386),
+    ]);
+    expect(segs.map((s) => s.text)).toEqual(['45 LB']);
+  });
+
+  it('keeps two separate numbers that only touch', () => {
+    const segs = groupWords([w('45', 100, 100, 150, 150), w('5', 148, 100, 170, 150)]);
+    expect(segs.map((s) => s.text)).toEqual(['45 5']);
+  });
+
   it('does not join a number with an unrelated word below', () => {
     const segs = groupWords([w('45', 99, 88, 314, 228), w('Bake', 154, 292, 400, 354)]);
     expect(segs.map((s) => s.text)).toEqual(['45', 'Bake']);
