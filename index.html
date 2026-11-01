@@ -15,7 +15,7 @@
     <div id="app">
       <header class="topbar">
         <div class="brand">uniffy</div>
-        <div class="tagline">lb · °F · inch → kg · °C · cm</div>
+        <div class="tagline" data-i18n="tagline">lb · °F · inch → kg · °C · cm</div>
       </header>
 
       <main id="stage">
@@ -25,7 +25,7 @@
           <span class="corner tl"></span><span class="corner tr"></span>
           <span class="corner bl"></span><span class="corner br"></span>
         </div>
-        <p id="hint" class="hint">원판이나 라벨의 숫자를 네모 안에 크게 맞추고 찍으세요</p>
+        <p id="hint" class="hint" data-i18n="hint">원판이나 라벨의 숫자를 네모 안에 크게 맞추고 찍으세요</p>
         <div id="camera-msg" class="center-msg" hidden></div>
         <div id="status" class="status" hidden></div>
       </main>
@@ -37,18 +37,18 @@
       </section>
 
       <footer class="controls">
-        <label class="side-btn" aria-label="앨범에서 사진 고르기">
+        <label class="side-btn" aria-label="앨범에서 사진 고르기" data-i18n-aria="albumAria">
           <input id="file" type="file" accept="image/*" hidden />
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 5v14H5V5h14m0-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-4.86 8.86-3 3.87L9 13.14 6 17h12l-3.86-5.14Z"/></svg>
-          <span>앨범</span>
+          <span data-i18n="album">앨범</span>
         </label>
-        <button id="shutter" class="shutter" type="button" aria-label="찍기"><span></span></button>
+        <button id="shutter" class="shutter" type="button" aria-label="찍기" data-i18n-aria="shoot"><span></span></button>
         <div class="side-btn placeholder" aria-hidden="true"></div>
       </footer>
-      <p id="shutter-label" class="shutter-label">찍기</p>
+      <p id="shutter-label" class="shutter-label" data-i18n="shoot">찍기</p>
 
       <form id="manual" class="manual" autocomplete="off">
-        <input id="manual-input" type="text" inputmode="decimal" placeholder="직접 입력 (예: 225 → kg)" />
+        <input id="manual-input" type="text" inputmode="decimal" placeholder="직접 입력 (예: 225 → kg)" data-i18n-placeholder="manualPlaceholder" />
         <output id="manual-out"></output>
       </form>
     </div>

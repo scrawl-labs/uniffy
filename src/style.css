@@ -34,6 +34,9 @@ body {
   inset: 0;
   display: grid;
   grid-template-rows: auto 1fr auto auto auto auto;
+  /* Without this the single column grows to fit long content (a long manual
+     result) and pushes the whole app wider than the screen. */
+  grid-template-columns: minmax(0, 1fr);
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
 }
@@ -287,8 +290,9 @@ body {
 
 .manual {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 0 10px;
   margin: 10px 16px 10px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -296,7 +300,7 @@ body {
   padding: 0 12px;
 }
 .manual input {
-  flex: 1;
+  flex: 1 1 9rem;
   min-width: 0;
   background: transparent;
   border: 0;
@@ -307,10 +311,15 @@ body {
   outline: none;
 }
 .manual output {
+  /* Sits beside the input when it fits; drops onto its own line when it doesn't. */
+  flex: 0 1 auto;
+  max-width: 100%;
+  margin-left: auto;
   color: var(--accent);
   font-weight: 800;
-  white-space: nowrap;
-  max-width: 55%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.manual output:not(:empty) {
+  padding-bottom: 2px;
 }
