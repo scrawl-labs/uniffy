@@ -1,0 +1,183 @@
+// Turns OCR words (text + box) into detections: converted values placed where the
+// original text was. OCR engines often split "45 LB" into separate lines/blocks,
+// so we regroup words ourselves by geometry before running the unit parser.
+
+import { convertQuantity, findQuantities, type Converted, type FindOptions, type Match, type System } from './units';
+
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface OcrWord {
+  text: string;
+  bbox: Box;
+  confidence: number;
+}
+
+export interface Detection {
+  id: number;
+  match: Match;
+  converted: Converted;
+  bbox: Box;
+  confidence: number;
+}
+
+interface Segment {
+  text: string;
+  /** for each word: [start, end) offset into text */
+  spans: { start: number; end: number; word: OcrWord }[];
+}
+
+const h = (b: Box) => b.y1 - b.y0;
+const cy = (b: Box) => (b.y0 + b.y1) / 2;
+
+/** Group words into horizontal runs (rows split where the gap is large). */
+export function groupWords(words: OcrWord[]): Segment[] {
+  const clean = words.filter((w) => w.text.trim().length > 0 && h(w.bbox) > 0);
+  const rows: OcrWord[][] = [];
+  for (const w of [...clean].sort((a, b) => cy(a.bbox) - cy(b.bbox))) {
+    const row = rows.find((r) => {
+      const ref = r[r.length - 1].bbox;
+      const tol = Math.max(h(ref), h(w.bbox)) * 0.5;
+      return Math.abs(cy(ref) - cy(w.bbox)) <= tol;
+    });
+    if (row) row.push(w);
+    else rows.push([w]);
+  }
+
+  const segments: Segment[] = [];
+  for (const row of rows) {
+    row.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+    let current: OcrWord[] = [];
+    const flush = () => {
+      if (!current.length) return;
+      let text = '';
+      const spans: Segment['spans'] = [];
+      for (const word of current) {
+        if (text) text += ' ';
+        const start = text.length;
+        text += word.text;
+        spans.push({ start, end: text.length, word });
+      }
+      segments.push({ text, spans });
+      current = [];
+    };
+    for (const w of row) {
+      const prev = current[current.length - 1];
+      if (prev) {
+        const gap = w.bbox.x0 - prev.bbox.x1;
+        const size = Math.max(h(prev.bbox), h(w.bbox));
+        if (gap > size * 2.5) flush();
+      }
+      current.push(w);
+    }
+    flush();
+  }
+  return mergeStacked(segments);
+}
+
+/** True when the text is nothing but a unit, e.g. "LB", "kg", "lbs." */
+function isBareUnit(text: string): boolean {
+  if (!/^[A-Za-z°º.]{1,7}$/.test(text)) return false;
+  const [m] = findQuantities(`1 ${text}`);
+  return !!m && m.start === 0 && m.end >= text.length + 1;
+}
+
+function segBox(seg: Segment): Box {
+  return unionBox(seg.spans.map((s) => s.word.bbox));
+}
+
+/**
+ * Weight plates usually print the unit under the number ("45" over "LB").
+ * Join a segment ending in a digit with a short unit-looking segment directly below it.
+ */
+function mergeStacked(segments: Segment[]): Segment[] {
+  const used = new Set<Segment>();
+  const out: Segment[] = [];
+  for (const top of segments) {
+    if (used.has(top)) continue;
+    used.add(top);
+    if (!/\d$/.test(top.text)) {
+      out.push(top);
+      continue;
+    }
+    const a = segBox(top);
+    const below = segments.find((seg) => {
+      if (used.has(seg) || !isBareUnit(seg.text)) return false;
+      const b = segBox(seg);
+      const gap = b.y0 - a.y1;
+      const overlapX = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+      return gap >= -h(b) * 0.3 && gap < Math.max(h(a), h(b)) * 1.2 && overlapX > 0;
+    });
+    if (!below) {
+      out.push(top);
+      continue;
+    }
+    used.add(below);
+    const offset = top.text.length + 1;
+    out.push({
+      text: `${top.text} ${below.text}`,
+      spans: [...top.spans, ...below.spans.map((s) => ({ ...s, start: s.start + offset, end: s.end + offset }))],
+    });
+  }
+  return out;
+}
+
+function unionBox(boxes: Box[]): Box {
+  return {
+    x0: Math.min(...boxes.map((b) => b.x0)),
+    y0: Math.min(...boxes.map((b) => b.y0)),
+    x1: Math.max(...boxes.map((b) => b.x1)),
+    y1: Math.max(...boxes.map((b) => b.y1)),
+  };
+}
+
+/** Intersection over the smaller box. */
+export function overlapRatio(a: Box, b: Box): number {
+  const ix = Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0));
+  const iy = Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+  const area = (r: Box) => Math.max(1, (r.x1 - r.x0) * (r.y1 - r.y0));
+  return (ix * iy) / Math.min(area(a), area(b));
+}
+
+/**
+ * Words come from several OCR passes, so the same printed value can be read
+ * twice with slightly different boxes/text. Keep the best detection per spot:
+ * a read unit beats an assumed one, then higher confidence wins.
+ */
+function dedupe(list: Detection[]): Detection[] {
+  const score = (d: Detection) => (d.match.assumed ? 0 : 1000) + d.confidence;
+  const kept: Detection[] = [];
+  for (const d of [...list].sort((a, b) => score(b) - score(a))) {
+    if (!kept.some((k) => overlapRatio(k.bbox, d.bbox) > 0.5)) kept.push(d);
+  }
+  // reading order: same row (centers within half a height) left→right, then top→bottom
+  const sameRow = (a: Box, b: Box) => Math.abs(cy(a) - cy(b)) < Math.min(h(a), h(b)) / 2;
+  return kept
+    .sort((a, b) => (sameRow(a.bbox, b.bbox) ? a.bbox.x0 - b.bbox.x0 : cy(a.bbox) - cy(b.bbox)))
+    .map((d, id) => ({ ...d, id }));
+}
+
+export function detect(words: OcrWord[], target: System, opts: FindOptions = {}): Detection[] {
+  const out: Detection[] = [];
+  let id = 0;
+  for (const seg of groupWords(words)) {
+    for (const match of findQuantities(seg.text, opts)) {
+      const converted = convertQuantity(match, target);
+      if (!converted) continue;
+      const hit = seg.spans.filter((s) => s.start < match.end && match.start < s.end);
+      if (!hit.length) continue;
+      out.push({
+        id: id++,
+        match,
+        converted,
+        bbox: unionBox(hit.map((s) => s.word.bbox)),
+        confidence: Math.min(...hit.map((s) => s.word.confidence)),
+      });
+    }
+  }
+  return dedupe(out);
+}
