@@ -43,9 +43,8 @@ npm run build
 
 ## 배포
 
-`main`에 푸시하면 GitHub Actions가 테스트 → 빌드 → GitHub Pages 배포까지 해요.
-처음 한 번은 레포 **Settings → Pages → Source**를 **GitHub Actions**로 바꿔야 해요.
-배포 주소: `https://<owner>.github.io/uniffy/`
+`main`에 푸시하면 GitHub Actions가 테스트 → 빌드 → `gh-pages` 브랜치에 올려요. GitHub Pages가 그 브랜치를 서빙해요.
+배포 주소: https://scrawl-labs.github.io/uniffy/
 
 ## 구조
 
