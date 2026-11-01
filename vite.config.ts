@@ -6,6 +6,9 @@ const base = process.env.BASE_PATH ?? '/';
 
 export default defineConfig({
   base,
+  // WASM-only ONNX Runtime build: smaller, and we never load the WebGPU binaries.
+  resolve: { alias: [{ find: /^onnxruntime-web$/, replacement: 'onnxruntime-web/wasm' }] },
+  worker: { format: 'es' },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
@@ -29,13 +32,14 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // App shell is precached; the big OCR files (~7MB) are cached on first use,
-        // and only the one WASM variant this device needs gets downloaded.
-        globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // App shell is precached; the big OCR files (~30MB of models + WASM) are
+        // cached on first use.
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,webmanifest}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         globIgnores: ['ocr/**'],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.includes('/ocr/'),
+            urlPattern: ({ url }) => url.pathname.includes('/ocr/') || url.pathname.endsWith('.wasm'),
             handler: 'CacheFirst',
             options: {
               cacheName: 'uniffy-ocr',

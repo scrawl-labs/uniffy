@@ -56,12 +56,17 @@ describe('detect', () => {
     expect(ds[0].match.assumed).toBeFalsy();
   });
 
-  it('guesses lone plate-sized numbers as lb, but nothing else', () => {
+  it('guesses lone gym-weight numbers as lb, but nothing else', () => {
     const ds = detect(
-      [w('45', 100, 100, 150, 150), w('25', 600, 100, 650, 150), w('37', 1100, 100, 1150, 150), w('Bake', 100, 400, 200, 450), w('10', 220, 400, 260, 450), w('min', 280, 400, 340, 450)],
+      [w('45', 100, 100, 150, 150), w('40', 600, 100, 650, 150), w('37', 1100, 100, 1150, 150), w('Bake', 100, 400, 200, 450), w('10', 220, 400, 260, 450), w('min', 280, 400, 340, 450)],
       'metric',
-      { guessPlates: true },
+      { guessWeights: true },
     );
-    expect(ds.map((d) => d.converted.text)).toEqual(['20.4 kg', '11.3 kg']);
+    expect(ds.map((d) => d.converted.text)).toEqual(['20.4 kg', '18.1 kg']);
+  });
+
+  it('guesses a lone weight even when it shares a row with a labelled one', () => {
+    const ds = detect([w('40 LB', 100, 100, 200, 150), w('45', 300, 100, 350, 150)], 'metric', { guessWeights: true });
+    expect(ds.map((d) => d.converted.text)).toEqual(['18.1 kg', '20.4 kg']);
   });
 });

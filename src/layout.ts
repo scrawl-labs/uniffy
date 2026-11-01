@@ -166,17 +166,34 @@ function dedupe(list: Detection[]): Detection[] {
 export const LB_PLATES = new Set([2.5, 5, 10, 25, 35, 45, 55, 100]);
 
 export interface DetectOptions extends FindOptions {
-  /** Treat a number standing alone (nothing else on its line) that matches a pound plate size as lb. */
-  guessPlates?: boolean;
+  /**
+   * Treat a number standing alone (nothing else on its line) as pounds when it looks like
+   * a gym weight: a multiple of 2.5 from 2.5 to 150 (plates, dumbbells, kettlebells).
+   */
+  guessWeights?: boolean;
+}
+
+export function looksLikeWeight(text: string): boolean {
+  if (!/^\d{1,3}(\.5)?$/.test(text)) return false;
+  const v = Number(text);
+  return v >= 2.5 && v <= 150 && Number.isInteger(v / 2.5);
 }
 
 export function detect(words: OcrWord[], target: System, opts: DetectOptions = {}): Detection[] {
   const out: Detection[] = [];
   let id = 0;
   for (const seg of groupWords(words)) {
-    let matches = findQuantities(seg.text, opts);
-    if (!matches.length && opts.guessPlates && /^\d{1,3}(\.5)?$/.test(seg.text) && LB_PLATES.has(Number(seg.text))) {
-      matches = findQuantities(seg.text, { assumeUnit: 'lb' });
+    const matches = findQuantities(seg.text, opts);
+    // Only guess on rows made of numbers and units ("40 LB 45"), never inside prose ("Bake 10 min").
+    const numbersOnly = seg.spans.every((sp) => /^[\d.]+$/.test(sp.word.text) || isBareUnit(sp.word.text) || findQuantities(sp.word.text).length > 0);
+    if (opts.guessWeights && numbersOnly) {
+      // Any lone word that looks like a gym weight and is not already part of a match ("45" next to "40 LB").
+      for (const span of seg.spans) {
+        if (!looksLikeWeight(span.word.text)) continue;
+        if (matches.some((m) => m.start < span.end && span.start < m.end)) continue;
+        const [m] = findQuantities(span.word.text, { assumeUnit: 'lb' });
+        if (m) matches.push({ ...m, start: span.start + m.start, end: span.start + m.end });
+      }
     }
     for (const match of matches) {
       const converted = convertQuantity(match, target);

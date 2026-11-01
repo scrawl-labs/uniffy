@@ -1,86 +1,76 @@
-// On-device OCR via Tesseract.js. All assets are served from /ocr (copied at
-// install time), so nothing leaves the phone and it works offline.
-
-import { createWorker, OEM, PSM, type Worker } from 'tesseract.js';
-import { adaptiveThreshold, filterComponents, maskToRgba, toGray } from './imageproc';
+// Main-thread wrapper around the OCR worker.
 import type { OcrWord } from './layout';
+import type { WorkerRequest, WorkerResponse } from './ocr.worker';
 
-const assetBase = () => new URL(`${import.meta.env.BASE_URL}ocr/`, location.href).href;
+const base = () => new URL(`${import.meta.env.BASE_URL}ocr/`, location.href).href;
 
-let workerPromise: Promise<Worker> | null = null;
-type ProgressFn = (status: string, progress: number) => void;
-let progressListener: ProgressFn | null = null;
+let worker: Worker | null = null;
+let readyPromise: Promise<void> | null = null;
+let nextId = 1;
+const jobs = new Map<
+  number,
+  { onWords: (w: OcrWord[]) => void; onProgress: (done: number, total: number) => void; resolve: (w: OcrWord[]) => void; reject: (e: Error) => void }
+>();
 
-export function onOcrProgress(fn: ProgressFn | null) {
-  progressListener = fn;
-}
-
-export function getWorker(): Promise<Worker> {
-  if (!workerPromise) {
-    const base = assetBase();
-    workerPromise = (async () => {
-      const worker = await createWorker('eng', OEM.LSTM_ONLY, {
-        workerPath: `${base}worker.min.js`,
-        corePath: base,
-        langPath: base,
-        gzip: true,
-        logger: (m) => progressListener?.(m.status, m.progress),
-      });
-      await worker.setParameters({
-        // Scene text: scattered words anywhere in the frame (plates, labels).
-        tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-        preserve_interword_spaces: '1',
-      });
-      return worker;
-    })();
-    workerPromise.catch(() => {
-      workerPromise = null;
-    });
-  }
-  return workerPromise;
-}
-
-export type Variant = 'plain' | 'light-text' | 'dark-text';
-
-/**
- * plain:      grayscale + contrast stretch (clean labels, screens, recipes)
- * light-text: inverted, locally binarized, big shapes removed (white/embossed text on black plates)
- * dark-text:  same but not inverted (dark text on colored bumper plates, busy backgrounds)
- */
-export function preprocess(src: HTMLCanvasElement, variant: Variant): HTMLCanvasElement {
-  const { width: w, height: h } = src;
-  const out = document.createElement('canvas');
-  out.width = w;
-  out.height = h;
-  const ctx = out.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(src, 0, 0);
-  const img = ctx.getImageData(0, 0, w, h);
-  const gray = toGray(img.data, variant === 'light-text');
-  if (variant === 'plain') {
-    for (let i = 0; i < gray.length; i++) img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = gray[i];
-  } else {
-    const mask = filterComponents(adaptiveThreshold(gray, w, h), w, h);
-    maskToRgba(mask, img.data);
-  }
-  ctx.putImageData(img, 0, 0);
-  return out;
-}
-
-export async function recognizeWords(canvas: HTMLCanvasElement): Promise<OcrWord[]> {
-  const worker = await getWorker();
-  const { data } = await worker.recognize(canvas, {}, { blocks: true, text: false });
-  const words: OcrWord[] = [];
-  for (const block of data.blocks ?? []) {
-    for (const para of block.paragraphs) {
-      for (const line of para.lines) {
-        for (const word of line.words) {
-          if (word.confidence < 30) continue;
-          // Plate rims and shadows often come back as a lone low-confidence letter.
-          if (word.text.length === 1 && !/\d/.test(word.text) && word.confidence < 70) continue;
-          words.push({ text: word.text, bbox: word.bbox, confidence: word.confidence });
-        }
+function getWorker(): Worker {
+  if (worker) return worker;
+  worker = new Worker(new URL('./ocr.worker.ts', import.meta.url), { type: 'module' });
+  worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+    const msg = e.data;
+    if (msg.type === 'ready') return;
+    const job = msg.id !== undefined ? jobs.get(msg.id) : undefined;
+    if (msg.type === 'error') {
+      if (job) {
+        jobs.delete(msg.id!);
+        job.reject(new Error(msg.message));
+      } else console.error('[ocr]', msg.message);
+      return;
+    }
+    if (!job) return;
+    if (msg.type === 'progress') job.onProgress(msg.done, msg.total);
+    else if (msg.type === 'words') {
+      job.onWords(msg.words);
+      if (msg.final) {
+        jobs.delete(msg.id);
+        job.resolve(msg.words);
       }
     }
+  };
+  return worker;
+}
+
+/** Loads the models (first time ~30MB, then cached). Safe to call repeatedly. */
+export function warmUp(): Promise<void> {
+  if (!readyPromise) {
+    const w = getWorker();
+    readyPromise = new Promise((resolve, reject) => {
+      const onMsg = (e: MessageEvent<WorkerResponse>) => {
+        if (e.data.type === 'ready') {
+          w.removeEventListener('message', onMsg);
+          resolve();
+        } else if (e.data.type === 'error' && e.data.id === undefined) {
+          w.removeEventListener('message', onMsg);
+          readyPromise = null;
+          reject(new Error(e.data.message));
+        }
+      };
+      w.addEventListener('message', onMsg);
+      w.postMessage({ type: 'init', base: base(), debug: location.hash === '#debug' } satisfies WorkerRequest);
+    });
   }
-  return words;
+  return readyPromise;
+}
+
+export async function readImage(
+  canvas: HTMLCanvasElement,
+  onWords: (w: OcrWord[]) => void,
+  onProgress: (done: number, total: number) => void,
+): Promise<OcrWord[]> {
+  await warmUp();
+  const bitmap = await createImageBitmap(canvas);
+  const id = nextId++;
+  return new Promise((resolve, reject) => {
+    jobs.set(id, { onWords, onProgress, resolve, reject });
+    getWorker().postMessage({ type: 'read', id, image: bitmap } satisfies WorkerRequest, [bitmap]);
+  });
 }

@@ -1,23 +1,22 @@
-// Copies Tesseract worker, LSTM-only WASM cores and English language data
-// into public/ocr so the app works fully offline (no CDN at runtime).
-import { copyFileSync, mkdirSync, existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { createRequire } from 'node:module';
+// Copies the PaddleOCR models and the ONNX Runtime WASM runtime into public/ocr
+// (self-hosted: otherwise the runtime is fetched from a CDN, which breaks offline use)
+// so the app works fully offline (no CDN or model hub at runtime).
+import { copyFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 
-const require = createRequire(import.meta.url);
 const out = join(process.cwd(), 'public', 'ocr');
-mkdirSync(out, { recursive: true });
+rmSync(out, { recursive: true, force: true });
+mkdirSync(join(out, 'ort'), { recursive: true });
 
-const tessDir = dirname(require.resolve('tesseract.js/package.json'));
-const coreDir = dirname(require.resolve('tesseract.js-core/package.json'));
-const langDir = dirname(require.resolve('@tesseract.js-data/eng/package.json'));
+const models = join(process.cwd(), 'node_modules', '@gutenye', 'ocr-models', 'assets');
+const ort = join(process.cwd(), 'node_modules', 'onnxruntime-web', 'dist');
 
 const files = [
-  [join(tessDir, 'dist', 'worker.min.js'), 'worker.min.js'],
-  [join(coreDir, 'tesseract-core-lstm.wasm.js'), 'tesseract-core-lstm.wasm.js'],
-  [join(coreDir, 'tesseract-core-simd-lstm.wasm.js'), 'tesseract-core-simd-lstm.wasm.js'],
-  [join(coreDir, 'tesseract-core-relaxedsimd-lstm.wasm.js'), 'tesseract-core-relaxedsimd-lstm.wasm.js'],
-  [join(langDir, '4.0.0_best_int', 'eng.traineddata.gz'), 'eng.traineddata.gz'],
+  [join(models, 'ch_PP-OCRv4_det_infer.onnx'), 'det.onnx'],
+  [join(models, 'ch_PP-OCRv4_rec_infer.onnx'), 'rec.onnx'],
+  [join(models, 'ppocr_keys_v1.txt'), 'dict.txt'],
+  [join(ort, 'ort-wasm-simd-threaded.wasm'), 'ort/ort-wasm-simd-threaded.wasm'],
+  [join(ort, 'ort-wasm-simd-threaded.mjs'), 'ort/ort-wasm-simd-threaded.mjs'],
 ];
 
 for (const [src, name] of files) {
