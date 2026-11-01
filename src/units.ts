@@ -94,7 +94,7 @@ const FEET_INCHES_RE = new RegExp(
 );
 // Temperatures: 350°F, 350 °F, 350F, 180ºC, 72 deg F
 const TEMP_RE = new RegExp(
-  String.raw`(?<![\d.])(-?${NUM})(?:${RANGE_SEP}(-?${NUM}))?(?:\s*(?:°|º|˚|\*|degrees|deg\.?)\s*([FCfc])|([FC]))(?![a-zA-Z])`,
+  String.raw`(?<![\d.])(-?${NUM})(?:${RANGE_SEP}(-?${NUM}))?(?:\s*(?:°|º|˚|\*|degrees|deg\.?)\s*([FCfc])|([FCfc]))(?![a-zA-Z])`,
   'g',
 );
 // Everything else: number (or range) + unit. Two regexes because a few aliases
@@ -218,8 +218,8 @@ function targetUnitFor(unit: UnitDef, value: number, target: System): UnitDef {
     switch (unit.id) {
       case 'lb': return UNITS.kg;
       case 'oz': return UNITS.g;
-      case 'in': return value >= 39 ? UNITS.m : UNITS.cm;
-      case 'ft': return UNITS.m;
+      case 'in': return value >= 400 ? UNITS.m : UNITS.cm;
+      case 'ft': return value < 10 ? UNITS.cm : UNITS.m;
       case 'yd': return UNITS.m;
       case 'mi': return UNITS.km;
       case 'F': return UNITS.C;

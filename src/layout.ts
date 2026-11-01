@@ -4,6 +4,7 @@
 
 import { convertQuantity, findQuantities, type Converted, type FindOptions, type Match, type System } from './units';
 
+
 export interface Box {
   x0: number;
   y0: number;
@@ -161,11 +162,23 @@ function dedupe(list: Detection[]): Detection[] {
     .map((d, id) => ({ ...d, id }));
 }
 
-export function detect(words: OcrWord[], target: System, opts: FindOptions = {}): Detection[] {
+/** Standard pound plate sizes. A lone number with one of these values is almost certainly a plate. */
+export const LB_PLATES = new Set([2.5, 5, 10, 25, 35, 45, 55, 100]);
+
+export interface DetectOptions extends FindOptions {
+  /** Treat a number standing alone (nothing else on its line) that matches a pound plate size as lb. */
+  guessPlates?: boolean;
+}
+
+export function detect(words: OcrWord[], target: System, opts: DetectOptions = {}): Detection[] {
   const out: Detection[] = [];
   let id = 0;
   for (const seg of groupWords(words)) {
-    for (const match of findQuantities(seg.text, opts)) {
+    let matches = findQuantities(seg.text, opts);
+    if (!matches.length && opts.guessPlates && /^\d{1,3}(\.5)?$/.test(seg.text) && LB_PLATES.has(Number(seg.text))) {
+      matches = findQuantities(seg.text, { assumeUnit: 'lb' });
+    }
+    for (const match of matches) {
       const converted = convertQuantity(match, target);
       if (!converted) continue;
       const hit = seg.spans.filter((s) => s.start < match.end && match.start < s.end);

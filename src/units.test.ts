@@ -51,6 +51,7 @@ describe('temperature', () => {
     expect(conv('Bake at 350°F')).toEqual(['177°C']);
     expect(conv('350 °F')).toEqual(['177°C']);
     expect(conv('350F')).toEqual(['177°C']);
+    expect(conv('350f')).toEqual(['177°C']);
     expect(conv('72 deg F')).toEqual(['22°C']);
     expect(conv('-40°F')).toEqual(['-40°C']);
   });
@@ -66,8 +67,9 @@ describe('temperature', () => {
 
 describe('length', () => {
   it('converts heights', () => {
-    expect(conv(`5'11"`)).toEqual(['1.8 m']);
-    expect(conv('6ft 2in')).toEqual(['1.88 m']);
+    expect(conv(`5'11"`)).toEqual(['180 cm']);
+    expect(conv('6ft 2in')).toEqual(['188 cm']);
+    expect(conv('6 ft')).toEqual(['183 cm']);
   });
 
   it('converts inches and miles', () => {
