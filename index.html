@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0d10" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="description" content="원판이나 라벨을 찍으면 lb, °F, inch를 kg, °C, cm로 바꿔줘요" />
+    <meta name="description" content="Point your camera at lb, °F or inches and see kg, °C and cm." />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>uniffy</title>
@@ -15,7 +15,11 @@
     <div id="app">
       <header class="topbar">
         <div class="brand">uniffy</div>
-        <div class="tagline">lb · °F · inch → kg · °C · cm</div>
+        <div class="tagline">lb · °F · in → kg · °C · cm</div>
+        <div id="lang" class="lang" role="group" data-i18n-attr="aria-label:lang.label">
+          <button type="button" data-locale="en">EN</button>
+          <button type="button" data-locale="ko">한국어</button>
+        </div>
       </header>
 
       <main id="stage">
@@ -25,7 +29,7 @@
           <span class="corner tl"></span><span class="corner tr"></span>
           <span class="corner bl"></span><span class="corner br"></span>
         </div>
-        <p id="hint" class="hint">원판이나 라벨의 숫자를 네모 안에 크게 맞추고 찍으세요</p>
+        <p id="hint" class="hint" data-i18n="hint"></p>
         <div id="camera-msg" class="center-msg" hidden></div>
         <div id="status" class="status" hidden></div>
       </main>
@@ -37,18 +41,18 @@
       </section>
 
       <footer class="controls">
-        <label class="side-btn" aria-label="앨범에서 사진 고르기">
+        <label class="side-btn" data-i18n-attr="aria-label:album.label">
           <input id="file" type="file" accept="image/*" hidden />
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M19 5v14H5V5h14m0-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-4.86 8.86-3 3.87L9 13.14 6 17h12l-3.86-5.14Z"/></svg>
-          <span>앨범</span>
+          <span data-i18n="album"></span>
         </label>
-        <button id="shutter" class="shutter" type="button" aria-label="찍기"><span></span></button>
+        <button id="shutter" class="shutter" type="button"><span></span></button>
         <div class="side-btn placeholder" aria-hidden="true"></div>
       </footer>
-      <p id="shutter-label" class="shutter-label">찍기</p>
+      <p id="shutter-label" class="shutter-label"></p>
 
       <form id="manual" class="manual" autocomplete="off">
-        <input id="manual-input" type="text" inputmode="decimal" placeholder="직접 입력 (예: 225 → kg)" />
+        <input id="manual-input" type="text" inputmode="decimal" data-i18n-attr="placeholder:manual.placeholder" />
         <output id="manual-out"></output>
       </form>
     </div>

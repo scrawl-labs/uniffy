@@ -2,6 +2,7 @@ import './style.css';
 import { registerSW } from 'virtual:pwa-register';
 import { detect, LB_PLATES, type Detection, type OcrWord } from './layout';
 import { readImage, warmUp } from './ocr';
+import { applyStatic, getLocale, setLocale, t, type Locale } from './i18n';
 import { convertText, convertValue, formatQuantity, UNITS } from './units';
 
 // Always convert to metric: the app is for people who think in kg / °C / cm.
@@ -40,16 +41,23 @@ let runId = 0;
 let modelsReady = false;
 
 // ---------- status ----------
-function setStatus(text: string | null) {
-  statusEl.hidden = !text;
-  statusEl.textContent = text ?? '';
+// Status and camera messages are stored as keys so they re-render when the language changes.
+type StatusKey = Parameters<typeof t>[0];
+let status: { key: StatusKey; params?: Record<string, number> } | null = null;
+function setStatus(key: StatusKey | null, params?: Record<string, number>) {
+  status = key ? { key, params } : null;
+  renderStatus();
+}
+function renderStatus() {
+  statusEl.hidden = !status;
+  statusEl.textContent = status ? t(status.key, status.params) : '';
 }
 
 // ---------- camera ----------
 let stream: MediaStream | null = null;
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    showCameraMsg('이 브라우저에서는 카메라를 못 써요.\n왼쪽 아래 "앨범"으로 사진을 골라주세요.');
+    showCameraMsg('camera.unsupported');
     return;
   }
   try {
@@ -59,18 +67,19 @@ async function startCamera() {
     });
     video.srcObject = stream;
     await video.play().catch(() => {});
+    cameraMsgKey = null;
     cameraMsg.hidden = true;
   } catch (err) {
     const name = (err as DOMException)?.name;
     showCameraMsg(
-      name === 'NotAllowedError'
-        ? '카메라 권한이 꺼져 있어요.\n브라우저 설정에서 카메라를 허용하거나, 왼쪽 아래 "앨범"으로 사진을 골라주세요.'
-        : '카메라를 켤 수 없어요.\n왼쪽 아래 "앨범"으로 사진을 골라주세요.',
+      name === 'NotAllowedError' ? 'camera.denied' : 'camera.failed',
     );
   }
 }
-function showCameraMsg(text: string) {
-  cameraMsg.textContent = text;
+let cameraMsgKey: StatusKey | null = null;
+function showCameraMsg(key: StatusKey) {
+  cameraMsgKey = key;
+  cameraMsg.textContent = t(key);
   cameraMsg.hidden = mode !== 'camera';
 }
 
@@ -112,7 +121,7 @@ async function analyze(canvas: HTMLCanvasElement) {
   busy = true;
   render();
   try {
-    setStatus(modelsReady ? '읽는 중…' : '처음 한 번만 준비 중… (30MB)');
+    setStatus(modelsReady ? 'status.reading' : 'status.firstLoad');
     const update = (found: OcrWord[]) => {
       if (id !== runId) return;
       words = found;
@@ -121,7 +130,7 @@ async function analyze(canvas: HTMLCanvasElement) {
     };
     const final = await readImage(canvas, update, (done, total) => {
       modelsReady = true;
-      if (id === runId) setStatus(`읽는 중… ${done + 1}/${total}`);
+      if (id === runId) setStatus('status.readingN', { done: done + 1, total });
     });
     if (id !== runId) return;
     update(final);
@@ -129,7 +138,7 @@ async function analyze(canvas: HTMLCanvasElement) {
     setStatus(null);
   } catch (err) {
     console.error(err);
-    if (id === runId) setStatus('읽기 실패. 새로고침 후 다시 해주세요');
+    if (id === runId) setStatus('status.failed');
   } finally {
     if (id === runId) {
       busy = false;
@@ -148,8 +157,7 @@ function setMode(next: Mode) {
   shot.hidden = cam;
   sheet.hidden = cam;
   shutter.classList.toggle('again', !cam);
-  shutter.setAttribute('aria-label', cam ? '찍기' : '다시 찍기');
-  shutterLabel.textContent = cam ? '찍기' : '다시 찍기';
+  renderShutter();
   if (cam) {
     runId++;
     busy = false;
@@ -164,6 +172,12 @@ function setMode(next: Mode) {
 }
 
 // ---------- rendering ----------
+function renderShutter() {
+  const label = t(mode === 'camera' ? 'shoot' : 'again');
+  shutter.setAttribute('aria-label', label);
+  shutterLabel.textContent = label;
+}
+
 const visible = () => detections.filter((d) => !removed.has(d.id));
 
 function drawOverlay() {
@@ -215,7 +229,7 @@ function renderList() {
       <span class="from">${escapeHtml(sourceText(d))}</span>
       <span class="eq">=</span>
       <span class="to">${escapeHtml(d.converted.text)}</span>
-      <button class="remove" type="button" aria-label="이 결과 빼기">×</button>`;
+      <button class="remove" type="button" aria-label="${escapeHtml(t('remove.label'))}">×</button>`;
     li.querySelector('button')!.onclick = () => {
       removed.add(d.id);
       render();
@@ -225,8 +239,8 @@ function renderList() {
   const none = !busy && photo !== null && visible().length === 0;
   emptyEl.hidden = !none;
   emptyEl.textContent = detections.length
-    ? '결과를 다 뺐어요. "다시 찍기"를 눌러주세요.'
-    : '숫자를 못 찾았어요. 숫자가 네모 안에 크고 똑바로 들어오게 다시 찍어보세요. 아래 칸에 직접 입력해도 돼요.';
+    ? t('empty.removed')
+    : t('empty.none');
 }
 
 function renderSummary() {
@@ -244,9 +258,9 @@ function renderSummary() {
   const kg = (v: number) => formatQuantity(v, UNITS.kg);
   summaryEl.hidden = false;
   summaryEl.innerHTML = `
-    ${masses.length > 1 ? `<div class="sum-row"><span>원판 ${masses.length}장 합계</span><strong>${kg(sumKg)}</strong></div>` : ''}
+    ${masses.length > 1 ? `<div class="sum-row"><span>${escapeHtml(t('sum.plates', { n: masses.length }))}</span><strong>${kg(sumKg)}</strong></div>` : ''}
     <div class="sum-row barbell">
-      <span>바벨 양쪽에 똑같이 꽂으면<small>바 ${BAR_KG}kg 포함</small></span>
+      <span>${escapeHtml(t('sum.barbell'))}<small>${escapeHtml(t('sum.bar', { bar: BAR_KG }))}</small></span>
       <strong>${kg(barbellKg)}</strong>
     </div>`;
 }
@@ -279,7 +293,7 @@ fileInput.onchange = async () => {
     analyze(scaledCanvas(bmp, 0, 0, bmp.width, bmp.height));
     bmp.close();
   } catch {
-    setStatus('이미지를 열 수 없어요');
+    setStatus('status.badImage');
   }
 };
 
@@ -302,7 +316,25 @@ $('manual').addEventListener('submit', (e) => {
   manualInput.blur();
 });
 
+// ---------- language ----------
+const langButtons = document.querySelectorAll<HTMLButtonElement>('#lang [data-locale]');
+function renderLocale() {
+  applyStatic();
+  langButtons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.locale === getLocale())));
+  renderShutter();
+  renderStatus();
+  if (cameraMsgKey) cameraMsg.textContent = t(cameraMsgKey);
+  render();
+}
+langButtons.forEach((b) =>
+  b.addEventListener('click', () => {
+    setLocale(b.dataset.locale as Locale);
+    renderLocale();
+  }),
+);
+
 // ---------- boot ----------
+renderLocale();
 setMode('camera');
 // Load the OCR models in the background so the first shot is fast.
 const warm = () =>

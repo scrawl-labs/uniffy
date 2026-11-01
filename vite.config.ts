@@ -14,10 +14,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'uniffy — 단위 렌즈',
+        name: 'uniffy — unit lens',
         short_name: 'uniffy',
-        description: '찍으면 lb·°F·inch가 kg·°C·cm로 바뀌어 보이는 카메라',
-        lang: 'ko',
+        description: 'Point your camera at lb, °F or inches and see kg, °C and cm.',
+        lang: 'en',
         start_url: base,
         scope: base,
         display: 'standalone',
